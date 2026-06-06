@@ -28,6 +28,7 @@ class McpProtocolTest {
         val parsed = Json.parseToJsonElement(text).jsonObject
         assertEquals("2.0", parsed["jsonrpc"]?.jsonPrimitive?.content)
         assertNull(parsed["error"])
+        assertNotNull(parsed["result"])
     }
 
     @Test
@@ -43,5 +44,22 @@ class McpProtocolTest {
     fun `toolName returns null for non-tools-call method`() {
         val req = McpProtocol.parseRequest("""{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}""")
         assertNull(req.toolName())
+    }
+
+    @Test
+    fun `parseRequest throws on malformed JSON`() {
+        try {
+            McpProtocol.parseRequest("{bad json}")
+            fail("Expected exception for malformed JSON")
+        } catch (e: Exception) {
+            // expected
+        }
+    }
+
+    @Test
+    fun `toolName and toolArguments return null and empty map when params is not object`() {
+        val req = McpProtocol.parseRequest("""{"jsonrpc":"2.0","id":1,"method":"tools/call","params":null}""")
+        assertNull(req.toolName())
+        assertEquals(JsonObject(emptyMap()), req.toolArguments())
     }
 }

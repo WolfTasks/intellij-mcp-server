@@ -12,18 +12,22 @@ object McpProtocol {
         val params: JsonElement
     ) {
         fun toolName(): String? =
-            if (method == "tools/call") params.jsonObject["name"]?.jsonPrimitive?.content else null
+            if (method == "tools/call")
+                (params as? JsonObject)?.get("name")?.jsonPrimitive?.content
+            else null
 
         fun toolArguments(): JsonObject =
-            params.jsonObject["arguments"]?.jsonObject ?: JsonObject(emptyMap())
+            (params as? JsonObject)?.get("arguments") as? JsonObject ?: JsonObject(emptyMap())
     }
 
-    data class Response(
-        val id: JsonElement,
-        val result: JsonElement?,
-        val error: JsonObject?
-    )
+    sealed class Response {
+        abstract val id: JsonElement
 
+        data class Success(override val id: JsonElement, val result: JsonElement) : Response()
+        data class Error(override val id: JsonElement, val code: Int, val message: String) : Response()
+    }
+
+    // Throws SerializationException for invalid JSON, IllegalArgumentException if not a JSON object
     fun parseRequest(body: String): Request {
         val obj = json.parseToJsonElement(body).jsonObject
         return Request(
@@ -35,26 +39,21 @@ object McpProtocol {
     }
 
     fun successResponse(id: JsonElement, result: JsonElement): Response =
-        Response(id = id, result = result, error = null)
+        Response.Success(id = id, result = result)
 
     fun errorResponse(id: JsonElement, code: Int, message: String): Response =
-        Response(
-            id = id,
-            result = null,
-            error = buildJsonObject {
-                put("code", code)
-                put("message", message)
-            }
-        )
+        Response.Error(id = id, code = code, message = message)
 
     fun serializeResponse(response: Response): String =
         buildJsonObject {
             put("jsonrpc", "2.0")
             put("id", response.id)
-            if (response.error != null) {
-                put("error", response.error)
-            } else {
-                put("result", response.result ?: JsonNull)
+            when (response) {
+                is Response.Success -> put("result", response.result)
+                is Response.Error -> put("error", buildJsonObject {
+                    put("code", response.code)
+                    put("message", response.message)
+                })
             }
         }.toString()
 }
