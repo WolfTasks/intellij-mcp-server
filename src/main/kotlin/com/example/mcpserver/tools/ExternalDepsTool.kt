@@ -22,16 +22,16 @@ class ExternalDepsTool : McpTool {
             val deps = mutableListOf<JsonObject>()
 
             base.findChild("pom.xml")?.let { vf ->
-                deps += parsePomXml(String(vf.contentsToByteArray()))
+                deps += parsePomXml(String(vf.contentsToByteArray(), Charsets.UTF_8))
             }
             base.findChild("requirements.txt")?.let { vf ->
-                deps += parseRequirementsTxt(String(vf.contentsToByteArray()))
+                deps += parseRequirementsTxt(String(vf.contentsToByteArray(), Charsets.UTF_8))
             }
             base.findChild("build.gradle")?.let { vf ->
-                deps += parseGradleGroovy(String(vf.contentsToByteArray()))
+                deps += parseGradleGroovy(String(vf.contentsToByteArray(), Charsets.UTF_8))
             }
             base.findChild("build.gradle.kts")?.let { vf ->
-                deps += parseGradleKts(String(vf.contentsToByteArray()))
+                deps += parseGradleKts(String(vf.contentsToByteArray(), Charsets.UTF_8))
             }
 
             buildJsonObject {
@@ -76,17 +76,22 @@ class ExternalDepsTool : McpTool {
     }
 
     private fun parseGradleGroovy(content: String): List<JsonObject> =
-        parseGradleDeps(content, Regex("""(?:implementation|api|testImplementation|runtimeOnly)\s+['"]([^:'"]+):([^:'"]+):([^'"]+)['"]"""))
+        parseGradleDeps(content, Regex("""(implementation|api|testImplementation|runtimeOnly)\s+['"]([^:'"]+):([^:'"]+):([^'"]+)['"]"""))
 
     private fun parseGradleKts(content: String): List<JsonObject> =
-        parseGradleDeps(content, Regex("""(?:implementation|api|testImplementation|runtimeOnly)\s*\(\s*"([^:]+):([^:]+):([^"]+)"\s*\)"""))
+        parseGradleDeps(content, Regex("""(implementation|api|testImplementation|runtimeOnly)\s*\(\s*"([^:]+):([^:]+):([^"]+)"\s*\)"""))
 
     private fun parseGradleDeps(content: String, regex: Regex): List<JsonObject> =
         regex.findAll(content).map { m ->
+            val config = m.groupValues[1]
             buildJsonObject {
-                put("name", "${m.groupValues[1]}:${m.groupValues[2]}")
-                put("version", m.groupValues[3])
-                put("scope", "compile")
+                put("name", "${m.groupValues[2]}:${m.groupValues[3]}")
+                put("version", m.groupValues[4])
+                put("scope", when {
+                    config.contains("test", ignoreCase = true) -> "test"
+                    config.contains("runtime", ignoreCase = true) -> "runtime"
+                    else -> "compile"
+                })
             }
         }.toList()
 }
