@@ -12,13 +12,16 @@ class HttpMcpServer(
     private val registry: McpToolRegistry,
     private val port: Int = 6789
 ) {
+    @Volatile
     private var server: HttpServer? = null
 
     fun start() {
+        check(server == null) { "MCP server is already running" }
         val httpServer = HttpServer.create(InetSocketAddress("127.0.0.1", port), 0)
         httpServer.createContext("/mcp") { exchange ->
             if (exchange.requestMethod != "POST") {
                 exchange.sendResponseHeaders(405, -1)
+                exchange.close()
                 return@createContext
             }
             val body = exchange.requestBody.readBytes().toString(Charsets.UTF_8)
