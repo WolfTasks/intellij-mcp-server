@@ -26,7 +26,11 @@ class FileContentTool : McpTool {
         return ReadAction.compute<JsonElement, Exception> {
             val vf = LocalFileSystem.getInstance().findFileByPath(path)
                 ?: return@compute buildJsonObject { put("error", "File not found: $path") }
-            val content = String(vf.contentsToByteArray(), Charsets.UTF_8)
+            val content = try {
+                String(vf.contentsToByteArray(), Charsets.UTF_8)
+            } catch (e: Exception) {
+                return@compute buildJsonObject { put("error", "Could not read file: ${e.message}") }
+            }
             buildJsonObject { put("content", content) }
         }
     }
