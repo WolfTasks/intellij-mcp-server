@@ -1,0 +1,19 @@
+<idea-plugin>
+    <id>com.example.intellij-mcp-server</id>
+    <name>IntelliJ MCP Server</name>
+    <version>1.0.0</version>
+    <vendor>Example</vendor>
+    <description>Exposes an MCP JSON-RPC server for Claude Code on localhost:6789</description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.java</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <projectService
+            serviceInterface="com.example.mcpserver.McpPluginService"
+            serviceImplementation="com.example.mcpserver.McpPluginService"/>
+        <notificationGroup id="MCP Server"
+                           displayType="BALLOON"
+                           isLogByDefault="false"/>
+    </extensions>
+</idea-plugin>
