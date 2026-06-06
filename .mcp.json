@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "intellij": {
+      "type": "http",
+      "url": "http://localhost:6789/mcp"
+    }
+  }
+}
