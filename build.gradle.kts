@@ -16,6 +16,22 @@ repositories {
     }
 }
 
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+        vendor = JvmVendorSpec.ADOPTIUM
+    }
+}
+
+// Configure automatic toolchain download
+tasks.withType<JavaCompile> {
+    options.encoding = "UTF-8"
+}
+
+kotlin {
+    jvmToolchain(17)
+}
+
 dependencies {
     intellijPlatform {
         intellijIdeaCommunity("2024.1")
