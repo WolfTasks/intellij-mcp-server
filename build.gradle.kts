@@ -46,3 +46,10 @@ dependencies {
 tasks.test {
     useJUnit()
 }
+
+tasks {
+    patchPluginXml {
+        sinceBuild.set("241")
+        untilBuild.set("")   // no upper bound — works on 2024.1+
+    }
+}
