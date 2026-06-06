@@ -30,7 +30,7 @@ class DiagnosticsTool : McpTool {
         if (DumbService.isDumb(project)) {
             return buildJsonObject { put("error", "IntelliJ is still indexing. Try again shortly.") }
         }
-        val path = arguments["path"]?.jsonPrimitive?.content
+        val path = arguments["path"]?.takeIf { it !is JsonNull }?.jsonPrimitive?.content
         return if (path != null) diagnosticsForFile(path, project) else allProblematicFiles(project)
     }
 
@@ -73,6 +73,7 @@ class DiagnosticsTool : McpTool {
         }
     }
 
+    // Requires read action — always called from within ReadAction.compute
     private fun collectProblematicFiles(
         dir: VirtualFile,
         wolf: WolfTheProblemSolver,
