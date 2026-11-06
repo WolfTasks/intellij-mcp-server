@@ -41,6 +41,15 @@ dependencies {
     }
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     testImplementation("junit:junit:4.13.2")
+    constraints {
+        // The IntelliJ test framework (test-framework-core 241.x) pulls jackson 2.16.0, which has
+        // known CVEs. Test classpath only — nothing of this ships in the plugin ZIP.
+        listOf("jackson-core", "jackson-databind").forEach { artifact ->
+            testImplementation("com.fasterxml.jackson.core:$artifact:2.18.12") {
+                because("jackson < 2.18.11 has known CVEs (transitive via IntelliJ test-framework)")
+            }
+        }
+    }
 }
 
 tasks.test {
