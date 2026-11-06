@@ -1,20 +1,23 @@
 package com.example.mcpserver.tools
 
+import com.example.mcpserver.testutil.writeLocalFile
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import kotlinx.serialization.json.*
 
 class FileContentToolTest : BasePlatformTestCase() {
 
     fun `test reads java file content`() {
-        val file = myFixture.addFileToProject("src/Hello.java", "class Hello { /* hello */ }")
+        // Must be a real on-disk file: the tool resolves absolute paths via LocalFileSystem,
+        // which cannot see the light fixture's in-memory temp:// files.
+        val file = writeLocalFile(testRootDisposable, "Hello.java", "class Hello { /* hellö */ }")
         val tool = FileContentTool()
         val result = tool.execute(
-            buildJsonObject { put("path", file.virtualFile.path) },
+            buildJsonObject { put("path", file.path) },
             project
         )
         val content = result.jsonObject["content"]?.jsonPrimitive?.content
         assertNotNull("content must be present", content)
-        assertTrue("content must contain class name", content!!.contains("Hello"))
+        assertEquals("class Hello { /* hellö */ }", content)
     }
 
     fun `test returns error for missing file`() {
