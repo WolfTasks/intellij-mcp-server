@@ -38,6 +38,7 @@ class HttpMcpServerTest {
     private fun post(body: String): HttpResponse<String> =
         client.send(
             HttpRequest.newBuilder(URI("http://127.0.0.1:$port/mcp"))
+                .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build(),
             HttpResponse.BodyHandlers.ofString()

@@ -69,4 +69,42 @@ class ExternalDepsToolTest {
         val deps = ExternalDepsTool().parsePomXml("not xml at all")
         assertTrue(deps.isEmpty())
     }
+
+    @Test
+    fun `parsePom does not resolve external entities`() {
+        val secret = java.io.File.createTempFile("xxe", ".txt").apply {
+            writeText("TOP-SECRET-MARKER")
+            deleteOnExit()
+        }
+        val pom = """
+            <?xml version="1.0"?>
+            <!DOCTYPE project [ <!ENTITY x SYSTEM "${secret.toURI()}"> ]>
+            <project>
+              <dependencies>
+                <dependency>
+                  <groupId>&x;</groupId>
+                  <artifactId>a</artifactId>
+                  <version>1</version>
+                </dependency>
+              </dependencies>
+            </project>
+        """.trimIndent()
+        val deps = ExternalDepsTool().parsePomXml(pom)
+        assertFalse(deps.toString().contains("TOP-SECRET-MARKER"))
+        assertTrue("documents with a DOCTYPE are refused", deps.isEmpty())
+    }
+
+    @Test
+    fun `parsePom refuses entity expansion bombs`() {
+        val pom = """
+            <?xml version="1.0"?>
+            <!DOCTYPE lolz [
+              <!ENTITY a "aaaaaaaaaa">
+              <!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">
+              <!ENTITY c "&b;&b;&b;&b;&b;&b;&b;&b;&b;&b;">
+            ]>
+            <project><dependencies><dependency><groupId>&c;</groupId><artifactId>a</artifactId></dependency></dependencies></project>
+        """.trimIndent()
+        assertTrue(ExternalDepsTool().parsePomXml(pom).isEmpty())
+    }
 }

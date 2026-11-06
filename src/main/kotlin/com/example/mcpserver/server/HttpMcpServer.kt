@@ -1,50 +1,91 @@
 package com.example.mcpserver.server
 
 import com.example.mcpserver.tools.McpToolRegistry
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
+import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import kotlinx.serialization.json.*
 import java.net.InetSocketAddress
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 class HttpMcpServer(
     private val project: Project,
     private val registry: McpToolRegistry,
-    private val port: Int = 6789
+    private val port: Int = 6789,
+    private val serverName: String = "intellij-mcp-server",
 ) {
+    companion object {
+        const val PATH = "/mcp"
+        const val MAX_BODY_BYTES = 1024 * 1024
+        private const val WORKER_THREADS = 4
+        private val LOG = Logger.getInstance(HttpMcpServer::class.java)
+    }
+
     @Volatile
     private var server: HttpServer? = null
+    private var executor: ExecutorService? = null
+
+    /** Host headers a legitimate local client sends. Anything else (e.g. a rebound domain) is refused. */
+    private val allowedHosts = setOf("127.0.0.1:$port", "localhost:$port", "[::1]:$port")
 
     fun start() {
         check(server == null) { "MCP server is already running" }
         val httpServer = HttpServer.create(InetSocketAddress("127.0.0.1", port), 0)
-        httpServer.createContext("/mcp") { exchange ->
-            if (exchange.requestMethod != "POST") {
-                exchange.sendResponseHeaders(405, -1)
-                exchange.close()
-                return@createContext
-            }
-            val body = exchange.requestBody.readBytes().toString(Charsets.UTF_8)
-            val responseBytes = try {
-                val request = McpProtocol.parseRequest(body)
-                val response = dispatch(request)
-                McpProtocol.serializeResponse(response).toByteArray(Charsets.UTF_8)
+        httpServer.createContext(PATH) { exchange ->
+            try {
+                handle(exchange)
             } catch (e: Exception) {
-                val errResp = McpProtocol.errorResponse(JsonNull, -32700, "Parse error: ${e.message}")
-                McpProtocol.serializeResponse(errResp).toByteArray(Charsets.UTF_8)
+                LOG.warn("MCP request handling failed", e)
+                runCatching { exchange.sendResponseHeaders(500, -1) }
+            } finally {
+                exchange.close()
             }
-            exchange.responseHeaders.add("Content-Type", "application/json")
-            exchange.sendResponseHeaders(200, responseBytes.size.toLong())
-            exchange.responseBody.use { it.write(responseBytes) }
         }
-        httpServer.executor = Executors.newCachedThreadPool()
+        val pool = Executors.newFixedThreadPool(WORKER_THREADS)
+        httpServer.executor = pool
         httpServer.start()
+        executor = pool
         server = httpServer
     }
 
     fun stop() {
         server?.stop(2)
         server = null
+        executor?.shutdownNow()
+        executor = null
+    }
+
+    private fun handle(exchange: HttpExchange) {
+        // createContext matches by prefix — serve the exact endpoint only.
+        if (exchange.requestURI.path != PATH) return reject(exchange, 404)
+        if (exchange.requestMethod != "POST") return reject(exchange, 405)
+        val host = exchange.requestHeaders.getFirst("Host")?.lowercase()
+        if (host == null || host !in allowedHosts) return reject(exchange, 403)
+        // MCP clients are not browsers and send no Origin; browsers always do on cross-site POSTs.
+        if (exchange.requestHeaders.containsKey("Origin")) return reject(exchange, 403)
+        val contentType = exchange.requestHeaders.getFirst("Content-Type")
+            ?.substringBefore(';')?.trim()?.lowercase()
+        if (contentType != "application/json") return reject(exchange, 415)
+
+        val bodyBytes = exchange.requestBody.readNBytes(MAX_BODY_BYTES + 1)
+        if (bodyBytes.size > MAX_BODY_BYTES) return reject(exchange, 413)
+
+        val response = try {
+            dispatch(McpProtocol.parseRequest(bodyBytes.toString(Charsets.UTF_8)))
+        } catch (e: Exception) {
+            LOG.debug("MCP parse error", e)
+            McpProtocol.errorResponse(JsonNull, -32700, "Parse error")
+        }
+        val responseBytes = McpProtocol.serializeResponse(response).toByteArray(Charsets.UTF_8)
+        exchange.responseHeaders.add("Content-Type", "application/json")
+        exchange.sendResponseHeaders(200, responseBytes.size.toLong())
+        exchange.responseBody.use { it.write(responseBytes) }
+    }
+
+    private fun reject(exchange: HttpExchange, status: Int) {
+        exchange.sendResponseHeaders(status, -1)
     }
 
     private fun dispatch(request: McpProtocol.Request): McpProtocol.Response {
@@ -55,7 +96,7 @@ class HttpMcpServer(
                     put("protocolVersion", "2024-11-05")
                     put("capabilities", buildJsonObject { put("tools", JsonObject(emptyMap())) })
                     put("serverInfo", buildJsonObject {
-                        put("name", "intellij-mcp-server")
+                        put("name", serverName)
                         put("version", "1.0.0")
                     })
                 }
