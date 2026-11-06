@@ -1,9 +1,9 @@
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 
 plugins {
-    id("org.jetbrains.kotlin.jvm") version "2.0.21"
-    id("org.jetbrains.intellij.platform") version "2.3.0"
-    kotlin("plugin.serialization") version "2.0.21"
+    id("org.jetbrains.kotlin.jvm") version "2.4.21"
+    id("org.jetbrains.intellij.platform") version "2.19.0"
+    kotlin("plugin.serialization") version "2.4.21"
 }
 
 group = "com.example"
@@ -39,7 +39,7 @@ dependencies {
         instrumentationTools()
         testFramework(TestFrameworkType.Platform)
     }
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.12.0")
     testImplementation("junit:junit:4.13.2")
     constraints {
         // The IntelliJ test framework (test-framework-core 241.x) pulls jackson 2.16.0, which has
