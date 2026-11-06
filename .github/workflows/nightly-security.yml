@@ -1,0 +1,171 @@
+name: Nightly Security Scan
+
+on:
+  schedule:
+    - cron: '41 2 * * *'   # täglich 02:41 UTC
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/nightly-security.yml'
+      - '.github/scripts/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Nightly SCA scan of what the plugin actually ships, via Trivy (vulnerability DB
+# from GHCR — independent of the NVD live API, which made OWASP Dependency-Check
+# unreliable in TaskWolf).
+#
+# Trivy only sees Gradle dependencies through a gradle.lockfile, which this repo
+# does not commit, so one is generated ephemerally for runtime/compile classpaths
+# (.github/scripts/lock-runtime-deps.init.gradle.kts). In addition the built plugin
+# ZIP is unpacked and its bundled jars are scanned directly. The IntelliJ Platform
+# SDK itself is not scanned: it is provided by the user's IDE, not shipped.
+#
+# Reporting: SARIF with all severities → Security tab (category trivy-nightly),
+# a findings table in the run summary, and on scheduled runs an issue when the
+# HIGH/CRITICAL gate fails. The nightly cadence catches CVEs newly disclosed
+# against unchanged dependencies.
+jobs:
+  trivy-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad   # v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c   # v6.4.1
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Generate ephemeral lockfile and build plugin
+        run: |
+          INIT=.github/scripts/lock-runtime-deps.init.gradle.kts
+          ./gradlew --init-script "$INIT" dependencies --configuration runtimeClasspath --write-locks --console=plain -q > /dev/null
+          ./gradlew --init-script "$INIT" dependencies --configuration compileClasspath --write-locks --console=plain -q > /dev/null
+          ./gradlew buildPlugin --console=plain
+          mkdir -p scan-target/plugin
+          cp gradle.lockfile scan-target/
+          unzip -q build/distributions/*.zip -d scan-target/plugin
+          echo "Locked dependencies:"; grep -v '^#' scan-target/gradle.lockfile
+          echo "Bundled jars:"; find scan-target/plugin -name '*.jar' -printf '  %f\n'
+
+      - name: Trivy scan (SARIF, all severities)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25   # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: scan-target
+          scanners: vuln
+          format: sarif
+          output: trivy-nightly.sarif
+          exit-code: '0'
+
+      - name: Trivy scan (JSON, for summary and gate)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25   # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: scan-target
+          scanners: vuln
+          format: json
+          output: trivy-nightly.json
+          exit-code: '0'
+          skip-setup-trivy: true
+
+      - name: Upload SARIF
+        if: always() && hashFiles('trivy-nightly.sarif') != ''
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066   # v4.39.3
+        with:
+          sarif_file: trivy-nightly.sarif
+          category: trivy-nightly
+
+      - name: Upload JSON report
+        if: always() && hashFiles('trivy-nightly.json') != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9   # v7.0.2
+        with:
+          name: trivy-nightly-report
+          path: trivy-nightly.json
+          retention-days: 30
+
+      - name: Summary and HIGH/CRITICAL gate
+        run: |
+          FINDINGS=$(jq -r '[.Results[]? | .Target as $t | .Vulnerabilities[]? |
+            [.Severity, .PkgName, .InstalledVersion, .VulnerabilityID, (.FixedVersion // "—"), $t]] | unique[] | @tsv' trivy-nightly.json)
+          {
+            echo "## Nightly CVE scan — intellij-mcp-server"
+            echo
+            echo "Scanned: ephemeral \`gradle.lockfile\` (runtime/compile classpath) + jars bundled in the plugin ZIP."
+            echo
+            if [ -z "$FINDINGS" ]; then
+              echo "✅ No known vulnerabilities."
+            else
+              echo "| Severity | Package | Installed | CVE | Fixed in | Found in |"
+              echo "|---|---|---|---|---|---|"
+              printf '%s\n' "$FINDINGS" | awk -F'\t' '{printf "| %s | %s | %s | %s | %s | %s |\n",$1,$2,$3,$4,$5,$6}'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          GATE=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH" or .Severity=="CRITICAL")] | length' trivy-nightly.json)
+          echo "HIGH/CRITICAL findings: $GATE"
+          if [ "$GATE" -gt 0 ]; then
+            echo "::error::$GATE HIGH/CRITICAL vulnerabilities found — see run summary and Security tab (trivy-nightly)"
+            exit 1
+          fi
+
+      - name: Open or update issue on failure
+        if: failure() && github.event_name == 'schedule'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3   # v9.0.0
+        with:
+          script: |
+            const title = 'Nightly security scan failed';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = `Der nächtliche Trivy-Scan ist fehlgeschlagen (HIGH/CRITICAL-CVEs oder Workflow-Fehler).\n\nRun: ${runUrl}\nDetails: Run-Summary und Security-Tab (Code scanning, Kategorie \`trivy-nightly\`).`;
+            const { data: open } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo, state: 'open', per_page: 100,
+            });
+            const existing = open.find((i) => i.title === title && !i.pull_request);
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: existing.number,
+                body: `Erneut fehlgeschlagen am ${new Date().toISOString().slice(0, 10)}: ${runUrl}`,
+              });
+            } else {
+              await github.rest.issues.create({ owner: context.repo.owner, repo: context.repo.repo, title, body });
+            }
+
+  dependency-submission:
+    # Submits the resolved Gradle dependency graph so GitHub's Dependabot alerts
+    # can see this project's dependencies (no lockfile/manifest GitHub can parse).
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad   # v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Submit dependency graph
+        uses: gradle/actions/dependency-submission@8da46b539cd8fe6ab27ca75128919a18d757604c   # v6.4.1
