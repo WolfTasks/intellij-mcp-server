@@ -52,17 +52,17 @@ class McpToolRegistryTest {
     }
 
     @Test
-    fun `callTool converts tool exceptions into error objects`() {
-        val registry = McpToolRegistry(listOf(StubTool("boom") { throw IllegalStateException("kaputt") }))
+    fun `callTool converts tool exceptions into generic error objects without internal details`() {
+        val registry = McpToolRegistry(listOf(StubTool("boom") { throw IllegalStateException("internal /secret/path") }))
         val result = registry.callTool("boom", JsonObject(emptyMap()), project)
-        assertEquals("kaputt", result.jsonObject["error"]?.jsonPrimitive?.content)
+        assertEquals("Tool 'boom' failed", result.jsonObject["error"]?.jsonPrimitive?.content)
     }
 
     @Test
-    fun `callTool uses fallback message when exception has none`() {
+    fun `callTool gives the same generic message when exception has no message`() {
         val registry = McpToolRegistry(listOf(StubTool("boom") { throw RuntimeException() }))
         val result = registry.callTool("boom", JsonObject(emptyMap()), project)
-        assertEquals("Unknown error in tool 'boom'", result.jsonObject["error"]?.jsonPrimitive?.content)
+        assertEquals("Tool 'boom' failed", result.jsonObject["error"]?.jsonPrimitive?.content)
     }
 
     @Test

@@ -42,8 +42,7 @@ class ExternalDepsTool : McpTool {
 
     fun parsePomXml(content: String): List<JsonObject> {
         return try {
-            val factory = DocumentBuilderFactory.newInstance()
-            val doc = factory.newDocumentBuilder().parse(content.byteInputStream())
+            val doc = secureDocumentBuilderFactory().newDocumentBuilder().parse(content.byteInputStream())
             val nodes = doc.getElementsByTagName("dependency")
             (0 until nodes.length).map { i ->
                 val dep = nodes.item(i) as Element
@@ -94,4 +93,20 @@ class ExternalDepsTool : McpTool {
                 })
             }
         }.toList()
+
+    /** pom.xml comes from arbitrary (possibly untrusted) projects: no DTDs, no external entities. */
+    private fun secureDocumentBuilderFactory(): DocumentBuilderFactory =
+        // newDefaultInstance = the JDK built-in parser (supports all features below), independent of
+        // whatever DocumentBuilderFactory the IDE classpath would otherwise select.
+        DocumentBuilderFactory.newDefaultInstance().apply {
+            setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+            setFeature("http://xml.org/sax/features/external-general-entities", false)
+            setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+            setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
+            setFeature(javax.xml.XMLConstants.FEATURE_SECURE_PROCESSING, true)
+            setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_DTD, "")
+            setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_SCHEMA, "")
+            isXIncludeAware = false
+            isExpandEntityReferences = false
+        }
 }
