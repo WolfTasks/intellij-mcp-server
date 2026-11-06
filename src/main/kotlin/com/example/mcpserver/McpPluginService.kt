@@ -8,6 +8,7 @@ import com.example.mcpserver.tools.InternalDepsTool
 import com.example.mcpserver.tools.McpToolRegistry
 import com.example.mcpserver.tools.ProjectStructureTool
 import com.example.mcpserver.tools.SymbolSearchTool
+import com.intellij.ide.impl.isTrusted
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.Disposable
@@ -26,8 +27,15 @@ class McpPluginService(private val project: Project) : Disposable {
 
     init {
         LOG.info("McpPluginService initializing for project: ${project.name}")
-        ApplicationManager.getApplication().executeOnPooledThread {
-            startServer()
+        // Untrusted projects (e.g. freshly cloned, "Preview in Safe Mode") must not expose their
+        // contents over a local server automatically.
+        if (project.isTrusted()) {
+            ApplicationManager.getApplication().executeOnPooledThread {
+                startServer()
+            }
+        } else {
+            LOG.info("MCP server not started: project '${project.name}' is not trusted")
+            notify("MCP server not started: this project is not trusted.", NotificationType.INFORMATION)
         }
     }
 
@@ -42,7 +50,7 @@ class McpPluginService(private val project: Project) : Disposable {
                 DiagnosticsTool()
             ))
             for (port in 6789..6800) {
-                val httpServer = HttpMcpServer(project, registry, port)
+                val httpServer = HttpMcpServer(project, registry, port, serverName = "intellij-mcp-server (${project.name})")
                 try {
                     httpServer.start()
                     server = httpServer

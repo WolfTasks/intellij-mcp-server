@@ -1,9 +1,14 @@
 package com.example.mcpserver.tools
 
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import kotlinx.serialization.json.*
 
 class McpToolRegistry(tools: List<McpTool>) {
+
+    companion object {
+        private val LOG = Logger.getInstance(McpToolRegistry::class.java)
+    }
 
     private val toolMap: Map<String, McpTool> = tools.associateBy { it.name }
 
@@ -30,7 +35,9 @@ class McpToolRegistry(tools: List<McpTool>) {
         return try {
             tool.execute(arguments, project)
         } catch (e: Exception) {
-            buildJsonObject { put("error", e.message ?: "Unknown error in tool '$name'") }
+            // Details go to the IDE log, not to the client.
+            LOG.warn("MCP tool '$name' failed", e)
+            buildJsonObject { put("error", "Tool '$name' failed") }
         }
     }
 }
