@@ -9,6 +9,7 @@ import tempfile
 import threading
 import time
 import unittest
+import urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -391,6 +392,59 @@ class ForwarderTest(ForwardingTestBase):
         self.write_record(6790, mtime=2000)  # newer, but nobody listens there
         resp = self.forwarder({6789: b.port}).handle(TOOLS_LIST)
         self.assertEqual(resp["result"], BACKEND_TOOLS)
+        self.assertEqual(len(b.requests), 1)
+
+    def _flaky(self, fwd, exc):
+        """Make the forwarder's opener raise URLError(exc) while the returned flag is set."""
+        real = fwd._opener
+        state = {"fail": True}
+
+        class Flaky:
+            def open(self, request, timeout=None):
+                if state["fail"]:
+                    raise urllib.error.URLError(exc)
+                return real.open(request, timeout=timeout)
+
+        fwd._opener = Flaky()
+        return state
+
+    def test_reset_while_sending_is_backend_error_without_quarantine_or_retry(self):
+        old, new = self.backend(), self.backend()
+        self.write_record(6789, mtime=1000)
+        self.write_record(6790, mtime=2000)  # preferred (newer)
+        fwd = self.forwarder({6789: old.port, 6790: new.port})
+        state = self._flaky(fwd, ConnectionResetError("reset"))
+        resp = fwd.handle(TOOLS_CALL)
+        self.assertEqual(resp["error"]["code"], BACKEND_ERROR)
+        self.assertNotIn(TOKEN, resp["error"]["message"])
+        self.assertEqual(len(old.requests), 0)  # not re-sent to another window
+        self.assertEqual(len(new.requests), 0)
+        state["fail"] = False  # the window is healthy again: same record, no quarantine
+        self.assertEqual(fwd.handle(TOOLS_LIST)["result"], BACKEND_TOOLS)
+        self.assertEqual(len(new.requests), 1)
+        self.assertEqual(len(old.requests), 0)
+
+    def test_connect_timeout_falls_back_to_other_live_record(self):
+        b = self.backend()
+        self.write_record(6789, mtime=1000)
+        self.write_record(6790, mtime=2000)
+        fwd = self.forwarder({6789: b.port, 6790: b.port})
+        real = fwd._opener
+
+        # Both records map to the same fake backend, so distinguish by call order.
+        calls = []
+
+        class FirstTimesOut:
+            def open(self, request, timeout=None):
+                calls.append(request.full_url)
+                if len(calls) == 1:
+                    raise urllib.error.URLError(socket.timeout("timed out"))
+                return real.open(request, timeout=timeout)
+
+        fwd._opener = FirstTimesOut()
+        resp = fwd.handle(TOOLS_LIST)
+        self.assertEqual(resp["result"], BACKEND_TOOLS)
+        self.assertEqual(len(calls), 2)
         self.assertEqual(len(b.requests), 1)
 
     def test_refused_record_is_skipped_until_rewritten(self):

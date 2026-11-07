@@ -451,8 +451,12 @@ class Forwarder:
             e.close()
             raise _HttpStatus(e.code) from None
         except urllib.error.URLError as e:
-            # urllib wraps only errors of connecting/sending the request in URLError.
-            raise _ConnectFailed(str(e.reason)) from None
+            # urllib wraps any OSError while connecting OR sending the request in URLError. Only a
+            # refused/timed-out connect proves the request never arrived; a reset or broken pipe
+            # while sending may have been processed, so it is not retried and not quarantined.
+            if isinstance(e.reason, (ConnectionRefusedError, socket.timeout, TimeoutError)):
+                raise _ConnectFailed(_describe(e.reason)) from None
+            raise _BackendFailed(f"request failed ({_describe(e.reason) if isinstance(e.reason, BaseException) else e.reason})") from None
         except (OSError, http.client.HTTPException) as e:
             # Raised while waiting for the response (read timeout, reset): the call may be running.
             raise _BackendFailed(f"no response ({_describe(e)})") from None
