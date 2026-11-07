@@ -15,6 +15,10 @@ import java.net.Socket
 /** Request validation in front of the JSON-RPC dispatcher, exercised with raw HTTP. */
 class HttpMcpServerSecurityTest {
 
+    private companion object {
+        const val TOKEN = "test-token-0123456789abcdefghijklmnopqrstuvwxyz"
+    }
+
     private object MarkerTool : McpTool {
         override val name = "marker"
         override val description = "returns a marker"
@@ -24,7 +28,7 @@ class HttpMcpServerSecurityTest {
     }
 
     private val port = ServerSocket(0).use { it.localPort }
-    private val server = HttpMcpServer(fakeProject(), McpToolRegistry(listOf(MarkerTool)), port)
+    private val server = HttpMcpServer(fakeProject(), McpToolRegistry(listOf(MarkerTool)), port, token = TOKEN, projectName = "Demo Project")
     private val body = """{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"marker","arguments":{}}}"""
 
     @Before
@@ -37,12 +41,14 @@ class HttpMcpServerSecurityTest {
         path: String = "/mcp",
         host: String? = "127.0.0.1:$port",
         contentType: String? = "application/json",
+        authorization: String? = "Bearer $TOKEN",
         extraHeaders: List<String> = emptyList(),
         payload: String = body,
     ): String {
         val headers = buildList {
             host?.let { add("Host: $it") }
             contentType?.let { add("Content-Type: $it") }
+            authorization?.let { add("Authorization: $it") }
             addAll(extraHeaders)
             add("Content-Length: ${payload.toByteArray().size}")
             add("Connection: close")
@@ -129,5 +135,66 @@ class HttpMcpServerSecurityTest {
         val json = Json.parseToJsonElement(resp.substringAfter("\r\n\r\n")).jsonObject
         assertEquals(-32700, json["error"]?.jsonObject?.get("code")?.jsonPrimitive?.int)
         assertEquals("Parse error", json["error"]?.jsonObject?.get("message")?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `missing authorization is rejected with 401 and a bearer challenge`() {
+        val resp = send(authorization = null)
+        assertEquals(401, status(resp))
+        assertTrue(resp.contains("WWW-Authenticate: Bearer", ignoreCase = true))
+        assertFalse(resp.contains("MARKER"))
+    }
+
+    @Test
+    fun `wrong token is rejected`() {
+        assertEquals(401, status(send(authorization = "Bearer wrong")))
+        assertEquals(401, status(send(authorization = "Bearer ${TOKEN}x")))
+        assertEquals(401, status(send(authorization = "Bearer ${TOKEN.dropLast(1)}")))
+        assertEquals(401, status(send(authorization = "Bearer ")))
+    }
+
+    @Test
+    fun `non-bearer schemes are rejected`() {
+        assertEquals(401, status(send(authorization = "Basic $TOKEN")))
+        assertEquals(401, status(send(authorization = TOKEN)))
+    }
+
+    @Test
+    fun `bearer scheme is case-insensitive`() {
+        assertEquals(200, status(send(authorization = "bearer $TOKEN")))
+    }
+
+    @Test
+    fun `authorization is checked before content type and body`() {
+        assertEquals(401, status(send(authorization = null, contentType = "text/plain")))
+    }
+
+    @Test
+    fun `matching project header is accepted`() {
+        val resp = send(extraHeaders = listOf("${HttpMcpServer.PROJECT_HEADER}: Demo Project"))
+        assertEquals(200, status(resp))
+        assertTrue(resp.contains("MARKER"))
+    }
+
+    @Test
+    fun `percent-encoded project header is accepted`() {
+        assertEquals(200, status(send(extraHeaders = listOf("${HttpMcpServer.PROJECT_HEADER}: Demo%20Project"))))
+    }
+
+    @Test
+    fun `project header naming another project is rejected with 421`() {
+        val resp = send(extraHeaders = listOf("${HttpMcpServer.PROJECT_HEADER}: Other"))
+        assertEquals(421, status(resp))
+        assertFalse(resp.contains("MARKER"))
+    }
+
+    @Test
+    fun `project header is only evaluated after authentication`() {
+        assertEquals(401, status(send(authorization = null, extraHeaders = listOf("${HttpMcpServer.PROJECT_HEADER}: Other"))))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun `blank token is refused at construction`() {
+        HttpMcpServer(fakeProject(), McpToolRegistry(emptyList()), port, token = " ")
     }
 }

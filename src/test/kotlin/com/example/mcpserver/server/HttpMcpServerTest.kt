@@ -17,6 +17,10 @@ import java.net.http.HttpResponse
 
 class HttpMcpServerTest {
 
+    private companion object {
+        const val TOKEN = "test-token-0123456789abcdefghijklmnopqrstuvwxyz"
+    }
+
     private object EchoTool : McpTool {
         override val name = "echo"
         override val description = "echoes arguments"
@@ -26,7 +30,7 @@ class HttpMcpServerTest {
     }
 
     private val port = ServerSocket(0).use { it.localPort }
-    private val server = HttpMcpServer(fakeProject(), McpToolRegistry(listOf(EchoTool)), port)
+    private val server = HttpMcpServer(fakeProject(), McpToolRegistry(listOf(EchoTool)), port, token = TOKEN)
     private val client = HttpClient.newHttpClient()
 
     @Before
@@ -39,6 +43,7 @@ class HttpMcpServerTest {
         client.send(
             HttpRequest.newBuilder(URI("http://127.0.0.1:$port/mcp"))
                 .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer $TOKEN")
                 .POST(HttpRequest.BodyPublishers.ofString(body))
                 .build(),
             HttpResponse.BodyHandlers.ofString()

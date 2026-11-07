@@ -7,6 +7,8 @@ import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import kotlinx.serialization.json.*
 import java.net.InetSocketAddress
+import java.net.URLDecoder
+import java.security.MessageDigest
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -15,13 +17,25 @@ class HttpMcpServer(
     private val registry: McpToolRegistry,
     private val port: Int = 6789,
     private val serverName: String = "intellij-mcp-server",
+    /** Shared secret every request must carry as `Authorization: Bearer <token>`. */
+    token: String,
+    /** Name of the served project; a client may pin it via the [PROJECT_HEADER] request header. */
+    private val projectName: String = "",
 ) {
     companion object {
         const val PATH = "/mcp"
         const val MAX_BODY_BYTES = 1024 * 1024
+        /** Optional request header: if sent, it must equal the served project's name (else 421). */
+        const val PROJECT_HEADER = "X-IntelliJ-Project"
         private const val WORKER_THREADS = 4
         private val LOG = Logger.getInstance(HttpMcpServer::class.java)
     }
+
+    init {
+        require(token.isNotBlank()) { "MCP auth token must not be blank" }
+    }
+
+    private val tokenBytes = token.toByteArray(Charsets.UTF_8)
 
     @Volatile
     private var server: HttpServer? = null
@@ -65,6 +79,15 @@ class HttpMcpServer(
         if (host == null || host !in allowedHosts) return reject(exchange, 403)
         // MCP clients are not browsers and send no Origin; browsers always do on cross-site POSTs.
         if (exchange.requestHeaders.containsKey("Origin")) return reject(exchange, 403)
+        if (!isAuthorized(exchange.requestHeaders.getFirst("Authorization"))) {
+            exchange.responseHeaders.add("WWW-Authenticate", "Bearer realm=\"intellij-mcp-server\"")
+            return reject(exchange, 401)
+        }
+        // Wrong IDE instance / project behind this port (e.g. ports shifted because another project
+        // started first): fail loudly instead of answering about a different project.
+        exchange.requestHeaders.getFirst(PROJECT_HEADER)?.let { expected ->
+            if (decodeHeader(expected) != projectName) return reject(exchange, 421)
+        }
         val contentType = exchange.requestHeaders.getFirst("Content-Type")
             ?.substringBefore(';')?.trim()?.lowercase()
         if (contentType != "application/json") return reject(exchange, 415)
@@ -83,6 +106,18 @@ class HttpMcpServer(
         exchange.sendResponseHeaders(200, responseBytes.size.toLong())
         exchange.responseBody.use { it.write(responseBytes) }
     }
+
+    /** `Authorization: Bearer <token>`, scheme case-insensitive, token compared in constant time. */
+    private fun isAuthorized(header: String?): Boolean {
+        if (header == null) return false
+        val parts = header.trim().split(' ', limit = 2)
+        if (parts.size != 2 || !parts[0].equals("Bearer", ignoreCase = true)) return false
+        return MessageDigest.isEqual(parts[1].trim().toByteArray(Charsets.UTF_8), tokenBytes)
+    }
+
+    /** Header values are Latin-1 on the wire; non-ASCII project names can be sent percent-encoded (UTF-8). */
+    private fun decodeHeader(value: String): String =
+        runCatching { URLDecoder.decode(value.trim().replace("+", "%2B"), Charsets.UTF_8) }.getOrDefault(value.trim())
 
     private fun reject(exchange: HttpExchange, status: Int) {
         exchange.sendResponseHeaders(status, -1)
