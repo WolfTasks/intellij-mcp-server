@@ -113,6 +113,18 @@ working until they are updated:
 
 To rotate the token, delete the token file and restart the IDE; then update `INTELLIJ_MCP_TOKEN` if you use the direct connection (the proxy picks up the new token by itself).
 
+## Migration to 1.2.0 (new plugin id)
+
+Version 1.2.0 moves the plugin from the placeholder id `com.example.intellij-mcp-server` to
+`io.github.wolftasks.intellij-mcp-server` (vendor "WolfTasks"). The IDE treats this as a different plugin, so it
+does not update in place:
+
+1. Uninstall the old "IntelliJ MCP Server" (id `com.example.intellij-mcp-server`) in Settings -> Plugins and restart the IDE.
+2. Install 1.2.0 (from the custom repository, see "Updates", or from disk) and restart again.
+
+Do not keep both installed at the same time: they would fight over ports 6789-6800 and the notification group.
+Your token and the stdio proxy setup stay valid.
+
 ## Security model
 
 - Binds to `127.0.0.1` only; serves `POST /mcp` only.

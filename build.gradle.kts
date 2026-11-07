@@ -39,8 +39,8 @@ plugins {
     kotlin("plugin.serialization") version "2.4.21"
 }
 
-group = "com.example"
-version = "1.1.1"
+group = "io.github.wolftasks"
+version = "1.2.0"
 
 repositories {
     mavenCentral()
@@ -119,7 +119,7 @@ intellijPlatform {
             recommended()
         }
         // Marketplace naming rules only; this plugin is not published there.
-        freeArgs = listOf("-mute", "ForbiddenPluginIdPrefix,TemplateWordInPluginName")
+        freeArgs = listOf("-mute", "TemplateWordInPluginName")
     }
 }
 

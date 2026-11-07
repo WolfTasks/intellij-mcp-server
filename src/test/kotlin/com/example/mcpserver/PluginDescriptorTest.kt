@@ -15,6 +15,17 @@ class PluginDescriptorTest {
         return (0 until nodes.length).map { nodes.item(it).attributes.getNamedItem("id").nodeValue }
     }
 
+    private fun pluginXml() = javaClass.classLoader.getResourceAsStream("META-INF/plugin.xml")
+        ?.use { DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(it) }
+        ?: error("META-INF/plugin.xml not on the test classpath")
+
+    @Test
+    fun `plugin id and vendor are not placeholders`() {
+        val doc = pluginXml()
+        assertEquals("io.github.wolftasks.intellij-mcp-server", doc.getElementsByTagName("id").item(0).textContent.trim())
+        assertEquals("WolfTasks", doc.getElementsByTagName("vendor").item(0).textContent.trim())
+    }
+
     @Test
     fun `plugin xml registers the notification group the service uses`() {
         assertEquals(listOf(McpPluginService.NOTIFICATION_GROUP_ID), notificationGroupIds())
