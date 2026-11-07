@@ -129,3 +129,8 @@ tasks {
         untilBuild.set(provider { null })   // no upper bound — works on 2024.3+
     }
 }
+
+// Bundle the stdio proxy (source of truth lives in proxy/ so its Python tests run without Gradle).
+tasks.processResources {
+    from("proxy/intellij_mcp_proxy.py") { into("proxy") }
+}

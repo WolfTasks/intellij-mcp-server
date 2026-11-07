@@ -8,9 +8,13 @@ Requires IntelliJ IDEA 2024.3 or newer.
 
 ## Client setup (Claude Code)
 
+The plugin runs one HTTP server per open, trusted project and ships a small stdio proxy
+(`intellij_mcp_proxy.py`, Python 3.9+ standard library only) that connects Claude Code to the
+server of the right IDE window. `python3` must be on your `PATH`.
+
 The server requires a bearer token. It is generated on first start and stored in
 `~/.intellij-mcp-server/token` (Windows: `%USERPROFILE%\.intellij-mcp-server\token`), readable
-only by your user account.
+only by your user account. The proxy reads it for you; you never put it into a config file.
 
 The directory `~/.intellij-mcp-server/` is created with mode `0700` and the token file with `0600`
 on macOS/Linux. On Windows the directory gets an ACL with a single entry for your account,
@@ -18,48 +22,69 @@ protected against inheritance from the profile folder (no SYSTEM/Administrators/
 everything inside inherits that entry. To check: `icacls "%USERPROFILE%\.intellij-mcp-server"`
 should list only `<COMPUTER-or-DOMAIN>\<you>:(OI)(CI)(F)`.
 
-1. Start the IDE with the plugin once, so the token file exists.
-2. Export the token as the environment variable `INTELLIJ_MCP_TOKEN`, in the environment Claude Code
-   starts from:
+### Recommended: stdio proxy (user scope, works for every project)
 
-   - Windows (PowerShell, persistent for new terminals):
-     ```powershell
-     setx INTELLIJ_MCP_TOKEN (Get-Content "$env:USERPROFILE\.intellij-mcp-server\token")
-     ```
-   - macOS/Linux (add to `~/.bashrc` / `~/.zshrc`):
-     ```sh
-     export INTELLIJ_MCP_TOKEN="$(cat ~/.intellij-mcp-server/token)"
-     ```
+The plugin installs the proxy to `~/.intellij-mcp-server/bin/intellij_mcp_proxy.py` when the IDE
+starts the server (after the first start of a trusted project) and refreshes it on plugin updates.
+Register it once for your user:
 
-   Open a new terminal afterwards.
-3. Configure the server in the project's `.mcp.json`. Claude Code expands `${VAR}` in `headers`, so
-   the token itself never ends up in the repository:
+- Windows:
+  ```sh
+  claude mcp add intellij -s user -- python3 -I C:/Users/<you>/.intellij-mcp-server/bin/intellij_mcp_proxy.py
+  ```
+- macOS/Linux:
+  ```sh
+  claude mcp add intellij -s user -- python3 -I "$HOME/.intellij-mcp-server/bin/intellij_mcp_proxy.py"
+  ```
 
-   ```json
-   {
-     "mcpServers": {
-       "intellij": {
-         "type": "http",
-         "url": "http://localhost:6789/mcp",
-         "headers": {
-           "Authorization": "Bearer ${INTELLIJ_MCP_TOKEN}",
-           "X-IntelliJ-Project": "MyProject"
-         }
-       }
-     }
-   }
-   ```
+Claude Code starts the proxy in the session's working directory. For every request the proxy reads
+the discovery records (see below), skips records of dead IDE processes, and forwards the request
+to the window whose project directory equals the session directory or contains it (with nested
+projects, the innermost one wins). Windows opened or closed later are picked up without restarting
+Claude Code.
 
-   `X-IntelliJ-Project` is optional but recommended: set it to the project name as shown in the IDE.
-   The server then answers `421 Misdirected Request` if this port belongs to a different project,
-   instead of silently serving another project's files. Project names with non-ASCII characters
-   can be sent percent-encoded (UTF-8).
+If no IDE window matches, the proxy still starts: it reports an empty tool list and a message
+explaining the situation, and notifies Claude Code (`notifications/tools/list_changed`) as soon as
+a matching window opens.
 
-   If you prefer not to use an environment variable, Claude Code's `headersHelper` can read the file
-   directly, e.g. on macOS/Linux:
-   `"headersHelper": "printf '{\"Authorization\":\"Bearer %s\"}' \"$(cat ~/.intellij-mcp-server/token)\""`.
+Overrides, in order of precedence for the project directory: `--project-dir DIR`, environment
+variable `INTELLIJ_MCP_PROJECT_DIR`, `CLAUDE_PROJECT_DIR`, then the working directory. Other
+options: `--state-dir DIR` (environment `INTELLIJ_MCP_SERVER_HOME`) to use a different state
+directory, and `--timeout SEC` for the HTTP read timeout.
 
 Run `/mcp` in Claude Code to check the connection.
+
+Note: an entry named `intellij` in local scope (`~/.claude.json`, per project) or project scope
+(`.mcp.json`) shadows the user-scope entry of the same name. Remove such entries, otherwise the
+proxy is not used there.
+
+### Direct connection (one project)
+
+Without the proxy you can point Claude Code at a single server. Export the token as
+`INTELLIJ_MCP_TOKEN` (Windows PowerShell: `setx INTELLIJ_MCP_TOKEN (Get-Content "$env:USERPROFILE\.intellij-mcp-server\token")`;
+macOS/Linux: `export INTELLIJ_MCP_TOKEN="$(cat ~/.intellij-mcp-server/token)"`), open a new terminal,
+and add to the project's `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "intellij": {
+      "type": "http",
+      "url": "http://localhost:6789/mcp",
+      "headers": {
+        "Authorization": "Bearer ${INTELLIJ_MCP_TOKEN}",
+        "X-IntelliJ-Project": "MyProject"
+      }
+    }
+  }
+}
+```
+
+`X-IntelliJ-Project` is optional but recommended: set it to the project name as shown in the IDE.
+The server then answers `421 Misdirected Request` if this port belongs to a different project,
+instead of silently serving another project's files. Project names with non-ASCII characters
+can be sent percent-encoded (UTF-8). The port of a project depends on the order in which projects
+were opened, so this only suits a single-project setup.
 
 ### Which port belongs to which project?
 
@@ -81,12 +106,12 @@ Plugin version 1.1.0 introduces the token. Earlier versions accepted any local r
 working until they are updated:
 
 1. Update the plugin and restart the IDE (creates `~/.intellij-mcp-server/token`).
-2. Set `INTELLIJ_MCP_TOKEN` as described above and open a new terminal.
-3. Add the `headers` block to every `.mcp.json` that points at this server (and optionally
-   `X-IntelliJ-Project`).
-4. Restart Claude Code and check `/mcp`.
+2. Either switch to the stdio proxy (see "Client setup"; no token handling needed), or keep the
+   direct connection: set `INTELLIJ_MCP_TOKEN`, open a new terminal, and add the `headers` block
+   to every `.mcp.json` that points at this server (optionally `X-IntelliJ-Project`).
+3. Restart Claude Code and check `/mcp`.
 
-To rotate the token, delete the token file and restart the IDE; then update `INTELLIJ_MCP_TOKEN`.
+To rotate the token, delete the token file and restart the IDE; then update `INTELLIJ_MCP_TOKEN` if you use the direct connection (the proxy picks up the new token by itself).
 
 ## Security model
 

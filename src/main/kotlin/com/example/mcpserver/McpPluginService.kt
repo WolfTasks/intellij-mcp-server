@@ -1,6 +1,7 @@
 package com.example.mcpserver
 
 import com.example.mcpserver.auth.McpAuthStore
+import com.example.mcpserver.proxy.ProxyInstaller
 import com.example.mcpserver.server.HttpMcpServer
 import com.example.mcpserver.tools.DiagnosticsTool
 import com.example.mcpserver.tools.ExternalDepsTool
@@ -69,6 +70,8 @@ class McpPluginService(private val project: Project) : Disposable {
                 notify("MCP server not started: auth token could not be created in ${authStore.dir} (${e.message})", NotificationType.ERROR)
                 return
             }
+            runCatching { ProxyInstaller(authStore).install() }
+                .onFailure { LOG.warn("Could not install the MCP stdio proxy", it) }
             val registry = McpToolRegistry(listOf(
                 ProjectStructureTool(),
                 FileContentTool(),

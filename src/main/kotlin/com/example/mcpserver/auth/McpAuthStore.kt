@@ -39,6 +39,7 @@ class McpAuthStore(val dir: Path = defaultDir()) {
     companion object {
         const val TOKEN_FILE = "token"
         const val INSTANCES_DIR = "instances"
+        const val BIN_DIR = "bin"
         private const val TOKEN_BYTES = 32
         private const val MIN_TOKEN_LENGTH = 32
         private val LOG = Logger.getInstance(McpAuthStore::class.java)
@@ -60,6 +61,7 @@ class McpAuthStore(val dir: Path = defaultDir()) {
 
     val tokenFile: Path get() = dir.resolve(TOKEN_FILE)
     val instancesDir: Path get() = dir.resolve(INSTANCES_DIR)
+    val binDir: Path get() = dir.resolve(BIN_DIR)
 
     /** Returns the existing token, or generates and persists a new one. Safe against concurrent callers. */
     @Synchronized
@@ -101,14 +103,24 @@ class McpAuthStore(val dir: Path = defaultDir()) {
         ensurePrivateDir(dir)
         ensurePrivateDir(instancesDir)
         val file = instancesDir.resolve("$port.json")
-        val tmp = createPrivateFile(instancesDir.resolve("$port.json.${ProcessHandle.current().pid()}.tmp"))
+        writePrivateFile(file, json)
+        return file
+    }
+
+    /**
+     * Writes [content] to [file] (UTF-8) atomically via a private temp file in the same directory.
+     * The parent directory is made owner-only first; the file ends up owner-only as well.
+     */
+    internal fun writePrivateFile(file: Path, content: String) {
+        val parent = file.toAbsolutePath().parent
+        ensurePrivateDir(parent)
+        val tmp = createPrivateFile(parent.resolve("${file.fileName}.${ProcessHandle.current().pid()}.tmp"))
         try {
-            Files.writeString(tmp, json)
+            Files.writeString(tmp, content)
             Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
         } finally {
             Files.deleteIfExists(tmp)
         }
-        return file
     }
 
     /**

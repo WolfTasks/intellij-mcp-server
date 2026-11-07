@@ -4,3 +4,4 @@ build/
 *.iml
 out/
 .intellijPlatform/
+__pycache__/
