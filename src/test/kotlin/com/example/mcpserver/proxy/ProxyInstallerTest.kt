@@ -58,4 +58,25 @@ class ProxyInstallerTest {
     fun `missing resource fails loudly`() {
         assertThrows(IllegalStateException::class.java) { ProxyInstaller(store, "/nope.py").install() }
     }
+
+    @Test
+    fun `concurrent installs do not corrupt the file or leave temp files`() {
+        val threads = 8
+        val start = java.util.concurrent.CountDownLatch(1)
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(threads)
+        try {
+            val results = (1..threads).map {
+                pool.submit<Path> { start.await(); ProxyInstaller(store).install() }
+            }
+            start.countDown()
+            results.forEach { it.get(30, java.util.concurrent.TimeUnit.SECONDS) }
+        } finally {
+            pool.shutdownNow()
+        }
+
+        assertArrayEquals(bundled(), Files.readAllBytes(store.binDir.resolve(ProxyInstaller.FILE_NAME)))
+        Files.list(store.binDir).use { files ->
+            assertEquals(listOf(ProxyInstaller.FILE_NAME), files.map { it.fileName.toString() }.toList())
+        }
+    }
 }

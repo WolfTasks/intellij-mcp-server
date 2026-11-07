@@ -40,6 +40,9 @@ class McpAuthStore(val dir: Path = defaultDir()) {
         const val TOKEN_FILE = "token"
         const val INSTANCES_DIR = "instances"
         const val BIN_DIR = "bin"
+
+        /** Serializes [writePrivateFile] (and callers doing compare-and-write) across all store instances. */
+        internal val WRITE_LOCK = Any()
         private const val TOKEN_BYTES = 32
         private const val MIN_TOKEN_LENGTH = 32
         private val LOG = Logger.getInstance(McpAuthStore::class.java)
@@ -111,10 +114,11 @@ class McpAuthStore(val dir: Path = defaultDir()) {
      * Writes [content] to [file] (UTF-8) atomically via a private temp file in the same directory.
      * The parent directory is made owner-only first; the file ends up owner-only as well.
      */
-    internal fun writePrivateFile(file: Path, content: String) {
+    internal fun writePrivateFile(file: Path, content: String) = synchronized(WRITE_LOCK) {
         val parent = file.toAbsolutePath().parent
         ensurePrivateDir(parent)
-        val tmp = createPrivateFile(parent.resolve("${file.fileName}.${ProcessHandle.current().pid()}.tmp"))
+        // Unique per call: the store is shared by all projects of this IDE process.
+        val tmp = createPrivateFile(parent.resolve("${file.fileName}.${ProcessHandle.current().pid()}.${System.nanoTime()}.tmp"))
         try {
             Files.writeString(tmp, content)
             Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)

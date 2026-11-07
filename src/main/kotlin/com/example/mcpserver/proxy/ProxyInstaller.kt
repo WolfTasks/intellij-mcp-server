@@ -21,8 +21,9 @@ class ProxyInstaller(
         val bundled = ProxyInstaller::class.java.getResourceAsStream(resource)?.use { it.readBytes() }
             ?: throw IllegalStateException("Bundled proxy resource $resource not found")
         val target = store.binDir.resolve(FILE_NAME)
-        val current = if (Files.isRegularFile(target)) runCatching { Files.readAllBytes(target) }.getOrNull() else null
-        if (current == null || !current.contentEquals(bundled)) {
+        synchronized(McpAuthStore.WRITE_LOCK) {
+            val current = if (Files.isRegularFile(target)) runCatching { Files.readAllBytes(target) }.getOrNull() else null
+            if (current != null && current.contentEquals(bundled)) return target
             // The script is UTF-8 (ASCII today), so the String round trip is lossless.
             store.writePrivateFile(target, String(bundled, Charsets.UTF_8))
         }
