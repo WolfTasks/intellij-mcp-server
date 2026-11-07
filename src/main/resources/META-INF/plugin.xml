@@ -10,7 +10,7 @@
     <extensions defaultExtensionNs="com.intellij">
         <projectService serviceImplementation="com.example.mcpserver.McpPluginService"/>
         <postStartupActivity implementation="com.example.mcpserver.McpStartupActivity"/>
-        <notificationGroup id="MCP Server"
+        <notificationGroup id="IntelliJ MCP Server (WolfTasks)"
                            displayType="BALLOON"
                            isLogByDefault="false"/>
     </extensions>
