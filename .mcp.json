@@ -2,7 +2,8 @@
   "mcpServers": {
     "intellij": {
       "type": "http",
-      "url": "http://localhost:6789/mcp"
+      "url": "http://localhost:6789/mcp",
+      "headersHelper": "python3 -c \"import json,pathlib;p=pathlib.Path.home()/'.intellij-mcp-server'/'token';print(json.dumps({'Authorization':'Bearer '+p.read_text().strip()} if p.exists() else {}))\""
     }
   }
 }
