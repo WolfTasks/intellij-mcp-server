@@ -43,7 +43,17 @@
 
 **B3 – Plugin-ID:** siehe Entscheidungsfrage 1; der Plan enthält den Wechsel als Task 7, der bei „nein“ entfällt.
 
-## Offene Entscheidungsfragen für Wolfgang
+## Entscheidungen (Wolfgang, 2026-11-07)
+
+1. Plugin-ID-Wechsel auf `io.github.wolftasks.intellij-mcp-server`, Vendor „WolfTasks“ → Task 7 wird ausgeführt.
+2. Repo-`.mcp.json` wird gelöscht, user-scope-Einrichtung im README dokumentiert (wird in Task 4 erledigt, nicht erst in Task 6).
+3. Kein passendes Fenster → leere `tools/list` + `notifications/tools/list_changed` beim späteren Öffnen (A5 wie geplant).
+4. `python3` (nach Probelauf in Task 6).
+5. Version 1.2.0.
+
+Umsetzungsrunde 1: Tasks 1–5, 7, 8. **Nicht** in dieser Runde: Task 6 (Client-Konfiguration, separate Rückfrage) und Task 9 (Tag/Release).
+
+## Entscheidungsfragen (Stand vor Freigabe)
 
 1. **Plugin-ID von `com.example.intellij-mcp-server` auf `io.github.wolftasks.intellij-mcp-server` ändern (Vendor „WolfTasks“)?** Folge: IntelliJ sieht ein anderes Plugin; das alte muss vorher deinstalliert werden (sonst binden beide Ports und registrieren dieselbe Notification-Group → Fehler). **Empfehlung: ja, jetzt, zusammen mit dem ersten Release 1.2.0** – das Repository muss ohnehin einmalig manuell eingetragen werden, später wäre der Wechsel genauso teuer, und `com.example` ist ein Platzhalter (Verifier-Regel `ForbiddenPluginIdPrefix` ist nur stummgeschaltet). Paketnamen `com.example.mcpserver` bleiben (unsichtbar für Nutzer, reiner Diff-Lärm).
 2. **Repo-eigene `.mcp.json`: löschen oder auf den Proxy umstellen?** Project scope überschattet user scope; ein stdio-Eintrag mit absolutem Pfad gehört nicht ins Repo. **Empfehlung: löschen** und im README den user-scope-Eintrag dokumentieren.
@@ -266,8 +276,8 @@ def test_cli_subprocess_roundtrip(self):
 - [ ] **Step 3:** Implementieren. `build.gradle.kts`: `tasks.processResources { from("proxy/intellij_mcp_proxy.py") { into("proxy") } }`. In `startServer` nach `loadOrCreateToken()`: `runCatching { ProxyInstaller(authStore).install() }.onFailure { LOG.warn("Could not install the MCP stdio proxy", it) }` – kein Abbruch des Serverstarts.
 - [ ] **Step 4:** `./gradlew test buildPlugin` → PASS; `unzip -l build/distributions/intellij-mcp-server-*.zip` zeigt das Plugin-JAR, `unzip -l` des JARs enthält `proxy/intellij_mcp_proxy.py`.
 - [ ] **Step 5: CI** – in `ci.yml` vor „Test and build plugin“: Step `Proxy tests` mit `run: python3 -m unittest discover -s proxy -v` (ubuntu-latest hat Python 3 vorinstalliert, keine neue Action).
-- [ ] **Step 6: README** – Abschnitt „Client setup“ neu: empfohlener Weg = user-scope stdio-Proxy (`claude mcp add intellij -s user -- python3 -I <home>/.intellij-mcp-server/bin/intellij_mcp_proxy.py`), Erklärung Auflösung/Overrides (`--project-dir`, Env-Variablen), Hinweis, dass local/project-scope-Einträge namens `intellij` den user-scope überschatten; der bisherige HTTP-Weg bleibt als „Direktverbindung (ein Projekt)“ verkürzt erhalten.
-- [ ] **Step 7: Commit** – `git add build.gradle.kts .github/workflows/ci.yml README.md src/main/resources/META-INF/plugin.xml src/main/kotlin/com/example/mcpserver/auth/McpAuthStore.kt src/main/kotlin/com/example/mcpserver/proxy/ProxyInstaller.kt src/main/kotlin/com/example/mcpserver/McpPluginService.kt src/test/kotlin/com/example/mcpserver/proxy/ProxyInstallerTest.kt` → `feat: bundle the stdio proxy and install it next to the token`
+- [ ] **Step 6: README und `.mcp.json`** – `git rm .mcp.json` (Entscheidung 2). README: Abschnitt „Client setup“ neu: empfohlener Weg = user-scope stdio-Proxy (`claude mcp add intellij -s user -- python3 -I <home>/.intellij-mcp-server/bin/intellij_mcp_proxy.py`), Erklärung Auflösung/Overrides (`--project-dir`, Env-Variablen), Hinweis, dass local/project-scope-Einträge namens `intellij` den user-scope überschatten; der bisherige HTTP-Weg bleibt als „Direktverbindung (ein Projekt)“ verkürzt erhalten.
+- [ ] **Step 7: Commit** – `git add build.gradle.kts .github/workflows/ci.yml README.md .mcp.json src/main/resources/META-INF/plugin.xml src/main/kotlin/com/example/mcpserver/auth/McpAuthStore.kt src/main/kotlin/com/example/mcpserver/proxy/ProxyInstaller.kt src/main/kotlin/com/example/mcpserver/McpPluginService.kt src/test/kotlin/com/example/mcpserver/proxy/ProxyInstallerTest.kt` → `feat: bundle the stdio proxy and install it next to the token`
 
 ### Task 5: End-to-End-Smoke-Test mit echter IDE (ohne Konfigurationsänderung)
 
