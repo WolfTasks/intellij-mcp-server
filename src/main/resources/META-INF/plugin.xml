@@ -1,8 +1,8 @@
 <idea-plugin>
-    <id>com.example.intellij-mcp-server</id>
+    <id>io.github.wolftasks.intellij-mcp-server</id>
     <name>IntelliJ MCP Server</name>
-    <vendor>Example</vendor>
-    <description>Exposes an MCP JSON-RPC server for Claude Code on localhost:6789</description>
+    <vendor url="https://github.com/WolfTasks/intellij-mcp-server">WolfTasks</vendor>
+    <description>Exposes the open project to Claude Code over MCP: one server per trusted project on 127.0.0.1 (ports 6789-6800), plus a bundled stdio proxy that routes Claude Code to the right IDE window</description>
 
     <depends>com.intellij.modules.platform</depends>
     <depends>com.intellij.java</depends>

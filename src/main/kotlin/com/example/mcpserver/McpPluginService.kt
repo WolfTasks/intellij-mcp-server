@@ -1,6 +1,7 @@
 package com.example.mcpserver
 
 import com.example.mcpserver.auth.McpAuthStore
+import com.example.mcpserver.proxy.ProxyInstaller
 import com.example.mcpserver.server.HttpMcpServer
 import com.example.mcpserver.tools.DiagnosticsTool
 import com.example.mcpserver.tools.ExternalDepsTool
@@ -40,11 +41,17 @@ class McpPluginService(private val project: Project) : Disposable {
     @Volatile
     private var serverPort: Int? = null
 
+    /** Port of the running server, or null if none is running. */
+    internal val port: Int? get() = serverPort
+
     init {
         LOG.info("McpPluginService initializing for project: ${project.name}")
-        // Untrusted projects (e.g. freshly cloned, "Preview in Safe Mode") must not expose their
-        // contents over a local server automatically.
-        if (project.isTrusted()) {
+        if (ApplicationManager.getApplication().isUnitTestMode) {
+            // Light test projects must not bind real ports or write discovery records.
+            LOG.info("MCP server not started: unit test mode")
+        } else if (project.isTrusted()) {
+            // Untrusted projects (e.g. freshly cloned, "Preview in Safe Mode") must not expose their
+            // contents over a local server automatically.
             ApplicationManager.getApplication().executeOnPooledThread {
                 startServer()
             }
@@ -63,6 +70,8 @@ class McpPluginService(private val project: Project) : Disposable {
                 notify("MCP server not started: auth token could not be created in ${authStore.dir} (${e.message})", NotificationType.ERROR)
                 return
             }
+            runCatching { ProxyInstaller(authStore).install() }
+                .onFailure { LOG.warn("Could not install the MCP stdio proxy", it) }
             val registry = McpToolRegistry(listOf(
                 ProjectStructureTool(),
                 FileContentTool(),
