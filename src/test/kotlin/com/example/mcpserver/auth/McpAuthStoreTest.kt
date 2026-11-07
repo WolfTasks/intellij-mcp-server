@@ -21,6 +21,19 @@ class McpAuthStoreTest {
     }
 
     @Test
+    fun `default dir honors the home system property`() {
+        val old = System.getProperty(McpAuthStore.HOME_PROPERTY)
+        try {
+            System.setProperty(McpAuthStore.HOME_PROPERTY, root.resolve("custom").toString())
+            assertEquals(root.resolve("custom"), McpAuthStore.defaultDir())
+            System.setProperty(McpAuthStore.HOME_PROPERTY, " ")
+            assertEquals(Path.of(System.getProperty("user.home"), ".intellij-mcp-server"), McpAuthStore.defaultDir())
+        } finally {
+            if (old == null) System.clearProperty(McpAuthStore.HOME_PROPERTY) else System.setProperty(McpAuthStore.HOME_PROPERTY, old)
+        }
+    }
+
+    @Test
     fun `token is generated once and reused`() {
         val first = store.loadOrCreateToken()
         assertTrue("token too short: ${first.length}", first.length >= 43)

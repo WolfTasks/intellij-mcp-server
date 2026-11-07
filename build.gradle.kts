@@ -107,6 +107,8 @@ dependencies {
 
 tasks.test {
     useJUnit()
+    // Keep tests away from the real ~/.intellij-mcp-server.
+    systemProperty("intellij.mcp.server.home", layout.buildDirectory.dir("tmp/test-mcp-home").get().asFile.absolutePath)
 }
 
 intellijPlatform {

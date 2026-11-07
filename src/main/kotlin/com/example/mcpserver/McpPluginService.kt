@@ -40,11 +40,17 @@ class McpPluginService(private val project: Project) : Disposable {
     @Volatile
     private var serverPort: Int? = null
 
+    /** Port of the running server, or null if none is running. */
+    internal val port: Int? get() = serverPort
+
     init {
         LOG.info("McpPluginService initializing for project: ${project.name}")
-        // Untrusted projects (e.g. freshly cloned, "Preview in Safe Mode") must not expose their
-        // contents over a local server automatically.
-        if (project.isTrusted()) {
+        if (ApplicationManager.getApplication().isUnitTestMode) {
+            // Light test projects must not bind real ports or write discovery records.
+            LOG.info("MCP server not started: unit test mode")
+        } else if (project.isTrusted()) {
+            // Untrusted projects (e.g. freshly cloned, "Preview in Safe Mode") must not expose their
+            // contents over a local server automatically.
             ApplicationManager.getApplication().executeOnPooledThread {
                 startServer()
             }

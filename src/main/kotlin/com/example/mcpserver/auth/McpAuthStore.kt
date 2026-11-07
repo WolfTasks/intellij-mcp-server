@@ -43,7 +43,14 @@ class McpAuthStore(val dir: Path = defaultDir()) {
         private const val MIN_TOKEN_LENGTH = 32
         private val LOG = Logger.getInstance(McpAuthStore::class.java)
 
-        fun defaultDir(): Path = Path.of(System.getProperty("user.home"), ".intellij-mcp-server")
+        /** System property overriding the state directory (used by tests to stay away from the real one). */
+        const val HOME_PROPERTY = "intellij.mcp.server.home"
+
+        fun defaultDir(): Path {
+            val override = System.getProperty(HOME_PROPERTY)
+            return if (!override.isNullOrBlank()) Path.of(override)
+            else Path.of(System.getProperty("user.home"), ".intellij-mcp-server")
+        }
 
         fun generateToken(): String {
             val bytes = ByteArray(TOKEN_BYTES).also { SecureRandom().nextBytes(it) }
