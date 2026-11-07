@@ -1,0 +1,80 @@
+name: Release
+
+# Runs when a version tag (vX.Y.Z) is pushed. Builds the plugin, then publishes a GitHub release with
+# the plugin ZIP, the custom-repository descriptor (updatePlugins.xml) and the stdio proxy script.
+# The tag must match `version` in build.gradle.kts. Not a prerelease, so that
+# releases/latest/download/updatePlugins.xml always resolves to the newest release.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1   # v7.0.1
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad   # v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c   # v6.4.1
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Check that the tag matches the project version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          V=$(./gradlew -q properties --property version | sed -n 's/^version: //p')
+          if [ -z "$V" ] || [ "v$V" != "$TAG" ]; then
+            echo "::error::Tag $TAG does not match project version '$V'"
+            exit 1
+          fi
+
+      - name: Proxy tests
+        run: python3 -m unittest discover -s proxy -v
+
+      - name: Test, build plugin and generate updatePlugins.xml
+        run: ./gradlew test buildPlugin generateUpdatePluginsXml --console=plain
+
+      - name: Check that updatePlugins.xml points at the built ZIP
+        run: |
+          set -eu
+          shopt -s nullglob
+          zips=(build/distributions/*.zip)
+          if [ "${#zips[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one ZIP in build/distributions, found ${#zips[@]}"
+            exit 1
+          fi
+          ZIP=$(basename "${zips[0]}")
+          URL=$(python3 -I -c "import xml.etree.ElementTree as E;print(E.parse('build/distributions/updatePlugins.xml').find('plugin').get('url'))")
+          if [ "${URL##*/}" != "$ZIP" ]; then
+            echo "::error::updatePlugins.xml url ($URL) does not end in the built ZIP name ($ZIP)"
+            exit 1
+          fi
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" \
+            build/distributions/*.zip \
+            build/distributions/updatePlugins.xml \
+            proxy/intellij_mcp_proxy.py \
+            --title "$TAG" \
+            --generate-notes

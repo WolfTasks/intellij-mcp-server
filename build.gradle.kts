@@ -39,6 +39,9 @@ plugins {
     kotlin("plugin.serialization") version "2.4.21"
 }
 
+// Oldest supported build; shared by patchPluginXml and the custom-repository descriptor.
+val supportedSinceBuild = "243"
+
 group = "io.github.wolftasks"
 version = "1.2.0"
 
@@ -125,7 +128,7 @@ intellijPlatform {
 
 tasks {
     patchPluginXml {
-        sinceBuild.set("243")
+        sinceBuild.set(supportedSinceBuild)
         untilBuild.set(provider { null })   // no upper bound — works on 2024.3+
     }
 }
@@ -133,4 +136,44 @@ tasks {
 // Bundle the stdio proxy (source of truth lives in proxy/ so its Python tests run without Gradle).
 tasks.processResources {
     from("proxy/intellij_mcp_proxy.py") { into("proxy") }
+}
+
+// Custom plugin repository descriptor (Settings -> Plugins -> Manage Plugin Repositories). Attached to the
+// GitHub release next to the ZIP; the URL points at the ZIP of the same tag. The plugin id and vendor are
+// read from plugin.xml (single source of truth). Configuration-cache friendly: only captured values at execution time.
+val pluginXmlFile = layout.projectDirectory.file("src/main/resources/META-INF/plugin.xml").asFile
+val updatePluginsXmlFile = layout.buildDirectory.file("distributions/updatePlugins.xml").get().asFile
+val pluginVersion = project.version.toString()
+tasks.register("generateUpdatePluginsXml") {
+    group = "intellij platform"
+    description = "Generates updatePlugins.xml for the GitHub-hosted custom plugin repository."
+    // Copy script-level values into locals: doLast must not reference the script object (configuration cache).
+    val pluginXml = pluginXmlFile
+    val output = updatePluginsXmlFile
+    val version = pluginVersion
+    val since = supportedSinceBuild
+    inputs.file(pluginXml)
+    inputs.property("version", version)
+    inputs.property("sinceBuild", since)
+    outputs.file(output)
+    doLast {
+        val xml = pluginXml.readText(Charsets.UTF_8)
+        val id = Regex("<id>\\s*(.+?)\\s*</id>").find(xml)?.groupValues?.get(1) ?: error("No <id> in plugin.xml")
+        val vendor = Regex("<vendor[^>]*>\\s*(.+?)\\s*</vendor>").find(xml)?.groupValues?.get(1) ?: error("No <vendor> in plugin.xml")
+        fun esc(v: String) = v.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
+        val url = "https://github.com/WolfTasks/intellij-mcp-server/releases/download/v$version/intellij-mcp-server-$version.zip"
+        output.parentFile.mkdirs()
+        output.writeText(
+            """<?xml version="1.0" encoding="UTF-8"?>
+<plugins>
+  <plugin id="${esc(id)}" url="${esc(url)}" version="${esc(version)}">
+    <idea-version since-build="${esc(since)}"/>
+    <name>IntelliJ MCP Server</name>
+    <vendor>${esc(vendor)}</vendor>
+  </plugin>
+</plugins>
+""".replace("\r", ""),
+            Charsets.UTF_8,
+        )
+    }
 }

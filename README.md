@@ -125,6 +125,25 @@ does not update in place:
 Do not keep both installed at the same time: they would fight over ports 6789-6800 and the notification group.
 Your token and the stdio proxy setup stay valid.
 
+## Updates
+
+Releases are published on GitHub. To get updates inside the IDE like a Marketplace plugin, register the
+custom repository once:
+
+1. Settings -> Plugins -> gear icon -> Manage Plugin Repositories -> add
+   `https://github.com/WolfTasks/intellij-mcp-server/releases/latest/download/updatePlugins.xml`
+2. Install or update "IntelliJ MCP Server" from the Plugins tab as usual.
+
+The stdio proxy is shipped inside the plugin, so a plugin update also updates the proxy.
+
+### Releasing (maintainers)
+
+1. Bump `version` in `build.gradle.kts` and open a PR.
+2. Merge it into `master`.
+3. Push the tag `vX.Y.Z` (matching `version`) on `master`. The `Release` workflow checks the tag against the
+   version, runs the tests, builds the ZIP and creates the GitHub release with the ZIP, `updatePlugins.xml`
+   and `intellij_mcp_proxy.py`.
+
 ## Security model
 
 - Binds to `127.0.0.1` only; serves `POST /mcp` only.
