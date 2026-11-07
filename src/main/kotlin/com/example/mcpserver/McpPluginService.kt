@@ -25,6 +25,12 @@ class McpPluginService(private val project: Project) : Disposable {
         private val LOG = Logger.getInstance(McpPluginService::class.java)
         private val PORTS = 6789..6800
 
+        /**
+         * Must be unique across all plugins: the bundled JetBrains plugin com.intellij.mcpServer
+         * already registers "MCP Server". Keep in sync with notificationGroup in plugin.xml.
+         */
+        const val NOTIFICATION_GROUP_ID = "IntelliJ MCP Server (WolfTasks)"
+
         /** One store per IDE process; it serializes token creation across projects opening in parallel. */
         private val authStore by lazy { McpAuthStore() }
     }
@@ -133,7 +139,7 @@ class McpPluginService(private val project: Project) : Disposable {
 
     private fun notify(message: String, type: NotificationType) {
         NotificationGroupManager.getInstance()
-            .getNotificationGroup("MCP Server")
+            .getNotificationGroup(NOTIFICATION_GROUP_ID)
             ?.createNotification("IntelliJ MCP Server", message, type)
             ?.notify(project)
     }
