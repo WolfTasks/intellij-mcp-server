@@ -2,6 +2,37 @@ import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
 
+// Security floors for the BUILD-SCRIPT classpath only (IntelliJ Platform Gradle Plugin internals:
+// jackson, jsoup). Nothing here ships in the plugin ZIP. A dependency is only ever moved UP to the
+// floor, never down. Remove an entry once the Gradle plugin ships a fixed version.
+buildscript {
+    val floors = mapOf(
+        "com.fasterxml.jackson.core:jackson-core" to "2.21.7",
+        "com.fasterxml.jackson.core:jackson-databind" to "2.21.7",
+        "com.fasterxml.jackson.core:jackson-annotations" to "2.21",
+        "org.jsoup:jsoup" to "1.23.2",
+    )
+    fun parts(v: String) = v.substringBefore('-').split('.').map { it.toIntOrNull() ?: 0 }
+    fun isLower(a: String, b: String): Boolean {
+        val (x, y) = parts(a) to parts(b)
+        for (i in 0 until maxOf(x.size, y.size)) {
+            val d = x.getOrElse(i) { 0 } - y.getOrElse(i) { 0 }
+            if (d != 0) return d < 0
+        }
+        return false
+    }
+    configurations.classpath {
+        resolutionStrategy.eachDependency {
+            val floor = floors["${requested.group}:${requested.name}"] ?: return@eachDependency
+            val current = requested.version ?: return@eachDependency
+            if (current.isNotEmpty() && isLower(current, floor)) {
+                useVersion(floor)
+                because("Build-tooling CVE floor (see top of build.gradle.kts)")
+            }
+        }
+    }
+}
+
 plugins {
     id("org.jetbrains.kotlin.jvm") version "2.4.21"
     id("org.jetbrains.intellij.platform") version "2.20.0"
@@ -66,6 +97,9 @@ dependencies {
                 add(configuration, "com.fasterxml.jackson.core:$artifact:2.18.12") {
                     because("jackson < 2.18.11 has known CVEs (transitive via IntelliJ test-framework)")
                 }
+            }
+            add(configuration, "org.assertj:assertj-core:3.27.7") {
+                because("assertj-core <= 3.27.6 has a known CVE (transitive via IntelliJ test-framework)")
             }
         }
     }
