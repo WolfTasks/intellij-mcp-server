@@ -1,9 +1,11 @@
+import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
+import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
 
 plugins {
-    id("org.jetbrains.kotlin.jvm") version "2.0.21"
-    id("org.jetbrains.intellij.platform") version "2.3.0"
-    kotlin("plugin.serialization") version "2.0.21"
+    id("org.jetbrains.kotlin.jvm") version "2.4.21"
+    id("org.jetbrains.intellij.platform") version "2.20.0"
+    kotlin("plugin.serialization") version "2.4.21"
 }
 
 group = "com.example"
@@ -18,7 +20,7 @@ repositories {
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(17)
+        languageVersion = JavaLanguageVersion.of(21)
         vendor = JvmVendorSpec.ADOPTIUM
     }
 }
@@ -29,20 +31,33 @@ tasks.withType<JavaCompile> {
 }
 
 kotlin {
-    jvmToolchain(17)
+    jvmToolchain(21)   // IntelliJ 2024.2+ runs on and requires Java 21
+    compilerOptions {
+        // The IDE provides the Kotlin stdlib at runtime (kotlin.stdlib.default.dependency=false),
+        // so our code must not call stdlib API newer than the oldest supported IDE bundles
+        // (sinceBuild 243 = 2024.3 ships Kotlin 2.0.21; Kotlin 2.4 can no longer target the 1.9 API of 2024.1/2024.2).
+        apiVersion = KotlinVersion.KOTLIN_2_0
+        languageVersion = KotlinVersion.KOTLIN_2_2   // 2.0 is deprecated; language level may exceed apiVersion
+    }
+}
+
+configurations.runtimeClasspath {
+    // kotlinx-serialization pulls kotlin-stdlib (+ jetbrains annotations) transitively. The IDE
+    // already provides both; bundling a second stdlib in the plugin ZIP causes class conflicts.
+    exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib")
+    exclude(group = "org.jetbrains", module = "annotations")
 }
 
 dependencies {
     intellijPlatform {
-        intellijIdeaCommunity("2024.1")
+        intellijIdeaCommunity("2024.3")
         bundledPlugin("com.intellij.java")
-        instrumentationTools()
         testFramework(TestFrameworkType.Platform)
     }
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.12.0")
     testImplementation("junit:junit:4.13.2")
     constraints {
-        // The IntelliJ test framework (test-framework-core 241.x) pulls jackson 2.16.0, which has
+        // The IntelliJ test framework (test-framework-core 243.x) pulls jackson 2.17.x, which has
         // known CVEs. Test classpath only — nothing of this ships in the plugin ZIP.
         // Also the IntelliJ Platform Gradle Plugin's own test configurations
         // (intellijPlatformTestDependencies → intellijPlatformTestClasspath), which bypass testImplementation.
@@ -60,9 +75,21 @@ tasks.test {
     useJUnit()
 }
 
+intellijPlatform {
+    pluginVerification {
+        ides {
+            // Oldest supported build (sinceBuild) plus the releases the plugin recommends for sinceBuild..current.
+            create(IntelliJPlatformType.IntellijIdeaCommunity, "2024.3")
+            recommended()
+        }
+        // Marketplace naming rules only; this plugin is not published there.
+        freeArgs = listOf("-mute", "ForbiddenPluginIdPrefix,TemplateWordInPluginName")
+    }
+}
+
 tasks {
     patchPluginXml {
-        sinceBuild.set("241")
-        untilBuild.set("")   // no upper bound — works on 2024.1+
+        sinceBuild.set("243")
+        untilBuild.set(provider { null })   // no upper bound — works on 2024.3+
     }
 }
