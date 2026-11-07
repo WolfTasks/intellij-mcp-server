@@ -32,6 +32,8 @@ Register it once for your user:
   ```sh
   claude mcp add intellij -s user -- python3 -I C:/Users/<you>/.intellij-mcp-server/bin/intellij_mcp_proxy.py
   ```
+  If `python3` is not on your `PATH` (python.org installs provide `python`/`py`; the Microsoft
+  Store `python3` alias may just open the Store), use `py -3 -I <path>` as the command instead.
 - macOS/Linux:
   ```sh
   claude mcp add intellij -s user -- python3 -I "$HOME/.intellij-mcp-server/bin/intellij_mcp_proxy.py"
@@ -50,7 +52,10 @@ a matching window opens.
 Overrides, in order of precedence for the project directory: `--project-dir DIR`, environment
 variable `INTELLIJ_MCP_PROJECT_DIR`, `CLAUDE_PROJECT_DIR`, then the working directory. Other
 options: `--state-dir DIR` (environment `INTELLIJ_MCP_SERVER_HOME`) to use a different state
-directory, and `--timeout SEC` for the HTTP read timeout.
+directory, and `--timeout SEC` for the HTTP read timeout. `--state-dir` and
+`INTELLIJ_MCP_SERVER_HOME` only move the proxy's view (for tests or non-standard setups); the
+plugin's state directory is moved only by the JVM system property
+`-Dintellij.mcp.server.home=...` (IDE VM options). Both must point to the same directory.
 
 Run `/mcp` in Claude Code to check the connection.
 
