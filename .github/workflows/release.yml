@@ -44,6 +44,14 @@ jobs:
             echo "::error::Tag $TAG does not match project version '$V'"
             exit 1
           fi
+          echo "PROJECT_VERSION=$V" >> "$GITHUB_ENV"
+
+      - name: Check that the proxy version matches the project version
+        run: |
+          if ! grep -qxF "VERSION = \"$PROJECT_VERSION\"" proxy/intellij_mcp_proxy.py; then
+            echo "::error::proxy/intellij_mcp_proxy.py must contain the line VERSION = \"$PROJECT_VERSION\""
+            exit 1
+          fi
 
       - name: Proxy tests
         run: python3 -m unittest discover -s proxy -v
