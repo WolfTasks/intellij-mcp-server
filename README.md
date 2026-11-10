@@ -178,3 +178,7 @@ before connecting, and rotate the token if a client already connected there.
 ```
 
 The plugin ZIP ends up in `build/distributions/`.
+
+## License
+
+Released under the [MIT License](LICENSE).
