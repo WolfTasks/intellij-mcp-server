@@ -40,7 +40,7 @@ from typing import Any, BinaryIO, Callable, Mapping
 
 IS_WINDOWS: bool = os.name == "nt"
 PORTS = range(6789, 6801)
-VERSION = "1.2.0"
+VERSION = "1.2.2"
 
 NO_WINDOW = -32001
 BACKEND_ERROR = -32002
