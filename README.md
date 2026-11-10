@@ -143,7 +143,7 @@ The stdio proxy is shipped inside the plugin, so a plugin update also updates th
 
 ### Releasing (maintainers)
 
-1. Bump `version` in `build.gradle.kts` and open a PR.
+1. Bump `version` in `build.gradle.kts` and `VERSION` in `proxy/intellij_mcp_proxy.py`, then open a PR.
 2. Merge it into `master`.
 3. Push the tag `vX.Y.Z` (matching `version`) on `master`. The `Release` workflow checks the tag against the
    version, runs the tests, builds the ZIP and creates the GitHub release with the ZIP, `updatePlugins.xml`
