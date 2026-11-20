@@ -35,7 +35,7 @@ buildscript {
 
 plugins {
     id("org.jetbrains.kotlin.jvm") version "2.4.21"
-    id("org.jetbrains.intellij.platform") version "2.20.0"
+    id("org.jetbrains.intellij.platform") version "2.20.1"
     kotlin("plugin.serialization") version "2.4.21"
 }
 
@@ -88,7 +88,7 @@ dependencies {
         bundledPlugin("com.intellij.java")
         testFramework(TestFrameworkType.Platform)
     }
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.12.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.13.0")
     testImplementation("junit:junit:4.13.2")
     constraints {
         // The IntelliJ test framework (test-framework-core 243.x) pulls jackson 2.17.x, which has
