@@ -43,7 +43,7 @@ plugins {
 val supportedSinceBuild = "243"
 
 group = "io.github.wolftasks"
-version = "1.2.2"
+version = "1.2.3"
 
 repositories {
     mavenCentral()
