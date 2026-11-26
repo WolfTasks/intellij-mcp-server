@@ -125,7 +125,8 @@ Version 1.2.0 moves the plugin from the placeholder id `com.example.intellij-mcp
 does not update in place:
 
 1. Uninstall the old "IntelliJ MCP Server" (id `com.example.intellij-mcp-server`) in Settings -> Plugins and restart the IDE.
-2. Install 1.2.0 (from the custom repository, see "Updates", or from disk) and restart again.
+2. Install 1.2.0 from the custom repository (see "Updates") and restart again. If you install it from disk
+   instead, set its update source afterwards as described under "Updates".
 
 Do not keep both installed at the same time: they would fight over ports 6789-6800 and the notification group.
 Your token and the stdio proxy setup stay valid.
@@ -138,6 +139,15 @@ custom repository once:
 1. Settings -> Plugins -> gear icon -> Manage Plugin Repositories -> add
    `https://github.com/WolfTasks/intellij-mcp-server/releases/latest/download/updatePlugins.xml`
 2. Install or update "IntelliJ MCP Server" from the Plugins tab as usual.
+
+IntelliJ 2025.3+ remembers per plugin where updates come from (`options/pluginUpdateSources.xml`). A plugin
+installed from the custom repository gets that source automatically. A plugin installed **from disk** has no
+source, and the IDE then shows "Cannot update plugin - Unable to identify where IntelliJ MCP Server was installed
+from" after every start until one is chosen. To fix that once (with the repository registered as above):
+
+- click "Choose where to get updates from" in that notification, or open Settings -> Plugins -> Installed ->
+  IntelliJ MCP Server and set "Updates from:" to the GitHub URL above, then click OK; or
+- run "Initialize Missing Plugin Update Sources" via Find Action (Ctrl+Shift+A).
 
 The stdio proxy is shipped inside the plugin, so a plugin update also updates the proxy.
 
